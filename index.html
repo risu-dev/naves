@@ -57,9 +57,13 @@ p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width
 /* el MAPA (Juan, 8-nov): un camino por el espacio que sube del nivel 1 (abajo) al sin fin y al portal (arriba). Cada
    nivel es un planeta; tu nave espera junto al nivel actual y, cuando se abre uno nuevo, vuela hasta él. Al hacer scroll
    el fondo (dibujado en el canvas, detrás) se mueve en capas más lentas que el camino: el efecto parallax. */
-#inicio { display: block; padding: 0; overflow-y: auto; overflow-x: hidden; background: transparent; overscroll-behavior: contain; scrollbar-width: none; }
-#inicio::-webkit-scrollbar { display: none; }
-.mapaCab { position: sticky; top: 0; z-index: 3; display: grid; justify-items: center; gap: 6px; padding: 12px 10px 22px; background: linear-gradient(rgba(4,6,15,0.95) 70%, rgba(4,6,15,0)); }
+/* (Juan, iPhone: con position: sticky, Safari dejaba la cabecera abajo, encima de los ajustes) la cabecera va fuera del
+   scroll: solo #mapaScroll se desplaza */
+#inicio { display: flex; flex-direction: column; padding: 0; overflow: hidden; background: transparent; }
+#mapaScroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(transparent 0, #000 22px); mask-image: linear-gradient(transparent 0, #000 22px); }
+#mapaScroll::-webkit-scrollbar { display: none; }
+.mapaCab { position: relative; z-index: 3; flex: none; display: grid; justify-items: center; gap: 6px; padding: 12px 10px 6px; background: rgba(4,6,15,0.85); }
 .mapaCab h1 { font-size: 28px; }
 .mapaCab .fila { margin: 0; gap: 8px; }
 .mapaCab .btn { padding: 7px 14px; font-size: 13px; min-width: 0; }
@@ -139,6 +143,7 @@ p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width
       <div class="letras" id="letras" aria-label="Letras capturadas"></div>
       <div class="fila"><span class="banco" id="bancoMapa"></span><button class="btn rosa" id="aTienda1">TIENDA</button></div>
     </div>
+    <div id="mapaScroll">
     <div class="mapa" id="mapa">
       <svg id="camino" aria-hidden="true"></svg>
       <button class="btn portal" id="portal"></button>
@@ -151,6 +156,7 @@ p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width
       <button class="reset" id="hard1">MODO DIFÍCIL: NO</button>
       <button class="reset" id="musica1">MÚSICA: SÍ</button>
       <button class="reset" id="reset1">EMPEZAR DE CERO</button>
+    </div>
     </div>
   </section>
   <section class="capa" id="resultado" hidden>
@@ -1444,11 +1450,16 @@ window.PARTITURAS = {"nivel1":{"nombre":"El cinturón","bpm":116,"vol":1,"unaVez
   }
   function enJefe() { return fase === 'juega' && !!partida && partida.estado === 'jefe'; }
   // el audio solo puede nacer con un toque: el primero en cualquier parte lo despierta (y la música del mapa empieza)
+  // (Juan, iPhone: no había música) iOS solo deja encender el audio al terminar un toque (touchend, click), no al apoyar el
+  // dedo; y lo destraba de verdad que en ese toque suene algo, aunque sea un instante de silencio
+  var audioDestrabado = false;
   function despertarAudio() {
     if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); cargarAudios(); } catch (e) {} }
-    if (ac && ac.state === 'suspended') ac.resume();
+    if (!ac) return;
+    if (ac.state === 'suspended' && ac.resume) ac.resume();
+    if (!audioDestrabado) { try { var b = ac.createBuffer(1, 1, 22050), f = ac.createBufferSource(); f.buffer = b; f.connect(ac.destination); f.start(0); audioDestrabado = true; } catch (e) {} }
   }
-  ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, despertarAudio); });
+  ['pointerdown', 'touchend', 'click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, despertarAudio, true); });
   function ajustarMusica() {
     if (!ac || !musica.on) return;
     var d = temaDeseado();
@@ -1728,7 +1739,7 @@ window.PARTITURAS = {"nivel1":{"nombre":"El cinturón","bpm":116,"vol":1,"unaVez
   // ---------- el MAPA ----------
   // Las paradas van por un camino en zigzag: k = 0 es el nivel 1 (abajo), k = 9 el sin fin y k = 10 el portal (arriba).
   // x en % del ancho, y en px desde arriba del mapa. La nave y el camino usan la misma curva, así la nave la sigue.
-  var MAPA = { paso: 118, abajo: 70, arriba: 80, paradas: M.NIVELES.length + 2 };
+  var MAPA = { paso: 118, abajo: 150, arriba: 80, paradas: M.NIVELES.length + 2, desde: -0.85 };  // desde: el camino nace un poco antes del nivel 1 (ahí espera la nave al empezar)
   var COLOR_NIVEL = [['#FF9F3A', '#7A3A10'], ['#B26BFF', '#3B1A6E'], ['#FF4F6A', '#6E1424'], ['#FFF36B', '#8A5A00'], ['#8FA6D6', '#2A3570'],
     ['#3CF0FF', '#0E4A70'], ['#5CFFB0', '#0E5A3A'], ['#7A6AB0', '#120E2A'], ['#FF4FD8', '#4A0E5A']];
   function altoMapa() { return MAPA.abajo + MAPA.arriba + (MAPA.paradas - 1) * MAPA.paso; }
@@ -1758,23 +1769,23 @@ window.PARTITURAS = {"nivel1":{"nombre":"El cinturón","bpm":116,"vol":1,"unaVez
     ponerEn(bs, M.NIVELES.length); c.appendChild(bs);
     // el camino: punteado, y dorado hasta donde llegaste
     var pts = function (k0, k1) { var out = []; for (var k = k0; k <= k1 + 1e-6; k += 0.05) out.push(mapaX(k).toFixed(2) + ',' + mapaY(k).toFixed(1)); return out.join(' '); };
-    var svg = document.getElementById('camino');
+    var svg = document.getElementById('camino'), d0 = MAPA.desde;
     if (svg.setAttribute) { svg.setAttribute('viewBox', '0 0 100 ' + alto); svg.setAttribute('preserveAspectRatio', 'none'); }
     var hasta = Math.min(paradaActual(), MAPA.paradas - 1);
-    svg.innerHTML = '<polyline points="' + pts(0, MAPA.paradas - 1) + '"/>' + (hasta > 0 ? '<polyline class="hecho" points="' + pts(0, hasta) + '"/>' : '');
+    svg.innerHTML = '<polyline points="' + pts(d0, MAPA.paradas - 1) + '"/>' + (hasta > 0 ? '<polyline class="hecho" points="' + pts(d0, hasta) + '"/>' : '');
     if (!naveM.vuela) { naveM.k = Math.min(prog.mapaVisto === undefined ? paradaActual() : prog.mapaVisto, paradaActual()); ponerNaveMapa(); }
   }
   // la nave espera un poco antes de su parada (abajo del planeta, sobre el camino)
   var ANTES = 0.5;
   function ponerNaveMapa() {
-    var e = document.getElementById('naveMapa'), k = Math.max(0, naveM.k - ANTES); ponerEn(e, k);
+    var e = document.getElementById('naveMapa'), k = naveM.k < 1 ? MAPA.desde + naveM.k * (1 - ANTES - MAPA.desde) : naveM.k - ANTES; ponerEn(e, k);  // antes del nivel 1, al comienzo del camino
     var w = document.getElementById('mapa').clientWidth || 360, dx = (mapaX(k + 0.02) - mapaX(k)) / 100 * w, dy = mapaY(k + 0.02) - mapaY(k);
     naveM.ang = Math.atan2(dx, -dy);  // la nave mira hacia donde sigue el camino
     e.style.transform = 'translate(-50%, -50%) rotate(' + naveM.ang.toFixed(3) + 'rad)';
   }
   // mira el mapa centrado en un punto del camino
   function centrarMapa(k) {
-    var ini = document.getElementById('inicio'), y = mapaY(Math.max(0, k)) + 130 - (ini.clientHeight || 640) * 0.55;  // 130: la cabecera
+    var ini = document.getElementById('mapaScroll'), y = mapaY(Math.max(0, k)) - (ini.clientHeight || 520) * 0.6;
     ini.scrollTop = Math.max(0, y); mapaScroll = ini.scrollTop || 0;
   }
   // al volver al mapa con un nivel nuevo abierto, la nave vuela del anterior al nuevo (la vista la sigue)
@@ -1808,7 +1819,7 @@ window.PARTITURAS = {"nivel1":{"nombre":"El cinturón","bpm":116,"vol":1,"unaVez
     cx = principal;
   }
   var mapaScroll = 0;
-  document.getElementById('inicio').addEventListener('scroll', function () { mapaScroll = document.getElementById('inicio').scrollTop || 0; });
+  document.getElementById('mapaScroll').addEventListener('scroll', function () { mapaScroll = document.getElementById('mapaScroll').scrollTop || 0; });
   pintarNiveles();
   setTimeout(vueloMapa, 50);
 
