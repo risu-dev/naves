@@ -1,0 +1,26 @@
+{
+  "name": "Naves",
+  "short_name": "Naves",
+  "description": "Un juego de naves pixel neón para el celular: desliza para esquivar, compra mejoras y vence a 9 jefes. Gratis y sin instalar nada.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#04060F",
+  "theme_color": "#04060F",
+  "icons": [
+    {
+      "src": "icono-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
